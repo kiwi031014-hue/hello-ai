@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>스마트 환기 지수 알리미</title>
+    <style>
+        body {
+            font-family: 'Pretendard', -apple-system, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f4f4f9;
+            /* 배경색 전환 모션 효과 */
+            transition: background-color 0.8s ease; 
+        }
+        .container {
+            background: white;
+            padding: 40px;
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            text-align: center;
+            max-width: 400px;
+            width: 100%;
+        }
+        h1 { margin-top: 0; color: #333; }
+        .input-group { margin-bottom: 20px; }
+        input {
+            padding: 10px;
+            width: 60%;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 16px;
+        }
+        button {
+            padding: 10px 20px;
+            border: none;
+            background-color: #333;
+            color: white;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.3s;
+        }
+        button:hover { background-color: #555; }
+        .status-circle {
+            width: 120px;
+            height: 120px;
+            border-radius: 50%;
+            background-color: #eee;
+            margin: 20px auto;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 24px;
+            font-weight: bold;
+            color: white;
+            transition: all 0.5s ease;
+        }
+        .message { font-size: 18px; font-weight: bold; margin-bottom: 10px; color: #555;}
+        .details { font-size: 14px; color: #777; }
+        
+        /* 상태별 디자인 */
+        body.green { background-color: #e8f5e9; }
+        .circle-green { background-color: #4caf50; box-shadow: 0 0 20px #4caf50; }
+        
+        body.yellow { background-color: #fffde7; }
+        .circle-yellow { background-color: #ffeb3b; color: #333; box-shadow: 0 0 20px #ffeb3b; }
+        
+        body.red { background-color: #ffebee; }
+        .circle-red { background-color: #f44336; box-shadow: 0 0 20px #f44336; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>스마트 환기 지수</h1>
+        <div class="input-group">
+            <input type="text" id="stationName" value="대연동" placeholder="동 이름 입력 (예: 대연동)">
+            <button onclick="checkVentilation()">확인</button>
+        </div>
+
+        <div id="statusCircle" class="status-circle">대기중</div>
+        <div id="message" class="message">동 이름을 입력하고 확인을 눌러주세요.</div>
+        <div id="details" class="details">미세먼지 정보를 불러옵니다.</div>
+    </div>
+
+    <script>
+        // ★ 여기에 발급받으신 '일반 인증키(Encoding)'를 꼭 넣어주세요!
+        const API_KEY = '여기에_인코딩_API키를_넣으세요';
+
+        function calculateVentilation(pm10) {
+            const value = parseInt(pm10);
+            if (isNaN(value)) return { status: 'error', message: '데이터 오류', score: 0 };
+            
+            if (value <= 30) {
+                return { status: "green", message: "지금이 골든타임! 창문을 활짝 여세요.", score: 100 };
+            } else if (value <= 80) {
+                return { status: "yellow", message: "5분만 짧게! 공기 순환만 시켜주세요.", score: 70 };
+            } else {
+                return { status: "red", message: "절대 금지! 창문을 닫고 공기청정기를 켜세요.", score: 30 };
+            }
+        }
+
+        async function checkVentilation() {
+            const station = document.getElementById('stationName').value;
+            const statusCircle = document.getElementById('statusCircle');
+            const messageEl = document.getElementById('message');
+            const detailsEl = document.getElementById('details');
+
+            messageEl.innerText = "데이터를 불러오는 중...";
+            
+            // 공공데이터포털 API 호출 URL (https 통신)
+            const url = `https://apis.data.go.kr/B552584/ArpltnInforInqireSvc/getMsrstnAcctoRltmMesureDnsty?serviceKey=${API_KEY}&returnType=json&numOfRows=1&pageNo=1&stationName=${encodeURIComponent(station)}&dataTerm=DAILY&ver=1.0`;
+
+            try {
+                const response = await fetch(url);
+                const data = await response.json();
+
+                if (data.response.header.resultCode === '00') {
+                    const items = data.response.body.items;
+                    if (items && items.length > 0) {
+                        const currentData = items[0];
+                        const pm10 = currentData.pm10Value;
+                        const pm25 = currentData.pm25Value;
+                        
+                        const ventilation = calculateVentilation(pm10);
+
+                        // UI 업데이트 및 애니메이션 실행
+                        document.body.className = ventilation.status;
+                        statusCircle.className = `status-circle circle-${ventilation.status}`;
+                        statusCircle.innerText = `${ventilation.score}점`;
+                        
+                        messageEl.innerText = ventilation.message;
+                        detailsEl.innerText = `PM10: ${pm10} ㎍/㎥ | PM2.5: ${pm25} ㎍/㎥`;
+                    } else {
+                        throw new Error("해당 동네의 측정소 데이터가 없습니다.");
+                    }
+                } else {
+                    throw new Error("API 연동 오류: " + data.response.header.resultMsg);
+                }
+            } catch (error) {
+                messageEl.innerText = error.message || "서버와 통신할 수 없습니다.";
+                statusCircle.className = 'status-circle';
+                statusCircle.innerText = "오류";
+                document.body.className = '';
+                detailsEl.innerText = "";
+            }
+        }
+    </script>
+</body>
+</html>
